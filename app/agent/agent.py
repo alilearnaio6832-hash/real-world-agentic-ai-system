@@ -1,4 +1,5 @@
 from app.llm.client import LLMClient
+from app.llm.models import LLMResponse
 from app.tools.registry import ToolRegistry
 
 
@@ -31,4 +32,19 @@ class Agent:
         return self.tool_registry.run(
             tool_name,
             tool_input,
+        )
+
+    def run_with_tools(
+        self,
+        task: str,
+        tools: list[dict],
+    ) -> LLMResponse:
+        """Ask the LLM to execute a task using available tools."""
+
+        if not task.strip():
+            raise ValueError("Task cannot be empty.")
+
+        return self.llm_client.generate_with_tools(
+            task,
+            tools,
         )
