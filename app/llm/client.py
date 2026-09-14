@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
 
 
+class LLMError(Exception):
+    """Base exception for LLM-related errors."""
+
+
 class LLMClient(ABC):
     """Provider-agnostic interface for Large Language Models."""
 
@@ -14,5 +18,8 @@ class LLMClient(ABC):
 
         Returns:
             Generated text response.
+
+        Raises:
+            LLMError: If the LLM provider cannot generate a response.
         """
         raise NotImplementedError
