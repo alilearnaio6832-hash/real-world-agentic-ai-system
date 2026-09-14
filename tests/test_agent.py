@@ -2,6 +2,7 @@ import pytest
 
 from app.agent.agent import Agent
 from app.llm.client import LLMClient
+from app.llm.models import LLMResponse
 
 
 class MockLLMClient(LLMClient):
@@ -9,6 +10,15 @@ class MockLLMClient(LLMClient):
 
     def generate(self, prompt: str) -> str:
         return f"Mock response: {prompt}"
+
+    def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict],
+    ) -> LLMResponse:
+        return LLMResponse(
+            content=f"Mock tool response: {prompt}"
+        )
 
 
 def test_agent_runs_task():
@@ -22,12 +32,18 @@ def test_agent_runs_task():
 def test_agent_rejects_empty_task():
     agent = Agent(MockLLMClient())
 
-    with pytest.raises(ValueError, match="Task cannot be empty."):
+    with pytest.raises(
+        ValueError,
+        match="Task cannot be empty.",
+    ):
         agent.run("")
 
 
 def test_agent_rejects_whitespace_task():
     agent = Agent(MockLLMClient())
 
-    with pytest.raises(ValueError, match="Task cannot be empty."):
+    with pytest.raises(
+        ValueError,
+        match="Task cannot be empty.",
+    ):
         agent.run("   ")

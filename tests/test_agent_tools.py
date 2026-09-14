@@ -1,5 +1,6 @@
 from app.agent.agent import Agent
 from app.llm.client import LLMClient
+from app.llm.models import LLMResponse
 from app.tools.calculator import CalculatorTool
 from app.tools.registry import ToolRegistry
 
@@ -9,6 +10,15 @@ class MockLLMClient(LLMClient):
 
     def generate(self, prompt: str) -> str:
         return f"Mock response: {prompt}"
+
+    def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict],
+    ) -> LLMResponse:
+        return LLMResponse(
+            content=f"Mock tool response: {prompt}"
+        )
 
 
 def create_agent_with_calculator() -> Agent:
@@ -57,6 +67,7 @@ def test_agent_rejects_unknown_tool():
         raise AssertionError(
             "Expected KeyError for unknown tool."
         )
+
 
 def test_agent_propagates_calculator_error():
     agent = create_agent_with_calculator()
