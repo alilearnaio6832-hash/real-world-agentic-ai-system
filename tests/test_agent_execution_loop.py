@@ -24,8 +24,8 @@ CALCULATOR_TOOL = {
 }
 
 
-class MockToolCallingLLM(LLMClient):
-    """Mock LLM that requests a tool and then returns a final answer."""
+class MockExecutionLLM(LLMClient):
+    """Mock LLM for execution loop tests."""
 
     def __init__(self) -> None:
         self.call_count = 0
@@ -45,7 +45,7 @@ class MockToolCallingLLM(LLMClient):
                 content="",
                 tool_calls=[
                     ToolCall(
-                        id="call_test",
+                        id="call_1",
                         name="calculator",
                         arguments={
                             "expression": "25 * 4",
@@ -59,21 +59,29 @@ class MockToolCallingLLM(LLMClient):
         )
 
 
-def test_agent_requests_tool_call_from_llm():
-    agent = Agent(
-        llm_client=MockToolCallingLLM(),
+def create_agent() -> Agent:
+    registry = ToolRegistry()
+    registry.register(CalculatorTool())
+
+    return Agent(
+        llm_client=MockExecutionLLM(),
+        tool_registry=registry,
     )
 
-    response = agent.run_with_tools(
+
+def test_agent_execution_loop():
+    agent = create_agent()
+
+    result = agent.run_with_tools(
         "Calculate 25 * 4",
         [CALCULATOR_TOOL],
     )
 
-    assert response.content == "The answer is 100."
+    assert result.content == "The answer is 100."
 
 
-def test_agent_executes_requested_tool():
-    llm = MockToolCallingLLM()
+def test_agent_execution_loop_calls_llm_again():
+    llm = MockExecutionLLM()
 
     registry = ToolRegistry()
     registry.register(CalculatorTool())
@@ -83,10 +91,10 @@ def test_agent_executes_requested_tool():
         tool_registry=registry,
     )
 
-    response = agent.run_with_tools(
+    result = agent.run_with_tools(
         "Calculate 25 * 4",
         [CALCULATOR_TOOL],
     )
 
-    assert response.content == "The answer is 100."
+    assert result.content == "The answer is 100."
     assert llm.call_count == 2
