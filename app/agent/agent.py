@@ -1,19 +1,41 @@
+from dataclasses import dataclass
+
 from app.agent.models import ToolResult
+from app.agent.verification import (
+    VerificationResult,
+    Verifier,
+)
 from app.llm.client import LLMClient
 from app.llm.models import LLMResponse
 from app.tools.registry import ToolRegistry
 
 
+@dataclass
+class VerifiedAgentResult:
+    """Represents an agent response together with verification."""
+
+    response: LLMResponse
+    verification: VerificationResult
+
+    @property
+    def content(self) -> str:
+        """Return the final agent response content."""
+
+        return self.response.content
+
+
 class Agent:
-    """Core agent responsible for LLM and tool orchestration."""
+    """Core agent responsible for LLM, tools, verification, and recovery."""
 
     def __init__(
         self,
         llm_client: LLMClient,
         tool_registry: ToolRegistry | None = None,
+        verifier: Verifier | None = None,
     ) -> None:
         self.llm_client = llm_client
         self.tool_registry = tool_registry or ToolRegistry()
+        self.verifier = verifier
 
     def run(self, task: str) -> str:
         """Execute a task using the configured LLM."""
@@ -34,6 +56,84 @@ class Agent:
             tool_name,
             tool_input,
         )
+
+    def run_with_verification(
+        self,
+        task: str,
+    ) -> VerifiedAgentResult:
+        """
+        Execute a task and verify the final result.
+
+        The method requires a verifier to be configured.
+        """
+
+        if not task.strip():
+            raise ValueError("Task cannot be empty.")
+
+        if self.verifier is None:
+            raise RuntimeError(
+                "Verifier is not configured."
+            )
+
+        response = self.llm_client.generate_with_tools(
+            task,
+            [],
+        )
+
+        verification = self.verifier.verify(
+            task,
+            response.content,
+        )
+
+        return VerifiedAgentResult(
+            response=response,
+            verification=verification,
+        )
+
+    def run_with_recovery(
+        self,
+        task: str,
+        max_retries: int = 1,
+    ) -> VerifiedAgentResult:
+        """
+        Execute a task, verify the result, and retry on failure.
+
+        Recovery is currently implemented as a simple retry strategy.
+        """
+
+        if not task.strip():
+            raise ValueError("Task cannot be empty.")
+
+        if self.verifier is None:
+            raise RuntimeError(
+                "Verifier is not configured."
+            )
+
+        if max_retries < 0:
+            raise ValueError(
+                "max_retries must be greater than or equal to zero."
+            )
+
+        for _ in range(max_retries + 1):
+            response = self.llm_client.generate_with_tools(
+                task,
+                [],
+            )
+
+            verification = self.verifier.verify(
+                task,
+                response.content,
+            )
+
+            result = VerifiedAgentResult(
+                response=response,
+                verification=verification,
+            )
+
+            if verification.passed:
+                return result
+
+        return result
 
     def run_with_tools(
         self,
@@ -149,10 +249,12 @@ class Agent:
                 )
 
         observation_text = "\n".join(observations)
+
         return (
-                                 f"{context}\n\n"
-                                    f"Previous assistant tool calls were executed.\n"
-                                    f"Tool observations:\n"
-                                    f"{observation_text}\n\n"
-                                    f"Use these observations to continue the task."
-                                )
+            f"{context}\n\n"
+            f"Previous assistant tool calls were executed.\n"
+            f"Tool observations:\n"
+            f"{observation_text}\n\n"
+            f"Use these observations to continue the task."
+        )
+
