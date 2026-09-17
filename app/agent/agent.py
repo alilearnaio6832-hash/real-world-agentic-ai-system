@@ -60,9 +60,12 @@ class Agent:
     def run_with_verification(
         self,
         task: str,
+        tools: list[dict] | None = None,
+        max_iterations: int = 5,
     ) -> VerifiedAgentResult:
         """
-        Execute a task and verify the final result.
+        Execute a task through the full execution loop and verify
+        the final result.
 
         The method requires a verifier to be configured.
         """
@@ -75,9 +78,10 @@ class Agent:
                 "Verifier is not configured."
             )
 
-        response = self.llm_client.generate_with_tools(
+        response = self.run_with_tools(
             task,
-            [],
+            tools or [],
+            max_iterations=max_iterations,
         )
 
         verification = self.verifier.verify(
@@ -93,10 +97,13 @@ class Agent:
     def run_with_recovery(
         self,
         task: str,
+        tools: list[dict] | None = None,
         max_retries: int = 1,
+        max_iterations: int = 5,
     ) -> VerifiedAgentResult:
         """
-        Execute a task, verify the result, and retry on failure.
+        Execute a task through the full execution loop, verify the
+        result, and retry the entire loop on verification failure.
 
         Recovery is currently implemented as a simple retry strategy.
         """
@@ -114,10 +121,13 @@ class Agent:
                 "max_retries must be greater than or equal to zero."
             )
 
+        tools = tools or []
+
         for _ in range(max_retries + 1):
-            response = self.llm_client.generate_with_tools(
+            response = self.run_with_tools(
                 task,
-                [],
+                tools,
+                max_iterations=max_iterations,
             )
 
             verification = self.verifier.verify(
@@ -143,7 +153,6 @@ class Agent:
     ) -> LLMResponse:
         """
         Execute a task using an LLM and registered tools.
-
         The agent repeatedly asks the LLM for a decision. If the
         LLM requests a tool, the agent executes it, creates a
         ToolResult, adds the observation to the context, and asks
@@ -257,4 +266,3 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
-
