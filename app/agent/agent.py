@@ -24,6 +24,14 @@ class VerifiedAgentResult:
         return self.response.content
 
 
+@dataclass
+class _AttemptRecord:
+    """Internal record of one failed recovery attempt."""
+
+    answer: str
+    reason: str
+
+
 class Agent:
     """Core agent responsible for LLM, tools, verification, and recovery."""
 
@@ -105,10 +113,10 @@ class Agent:
         Execute a task through the full execution loop, verify the
         result, and retry on failure.
 
-        On each failed attempt, the verifier's failure reason is
-        appended to the task as feedback for the next attempt, so
-        the LLM has a concrete signal to correct instead of
-        repeating an identical prompt blindly.
+        Every failed attempt is recorded. Each retry's task includes
+        feedback built from the full attempt history, so a repeated
+        wrong answer is explicitly flagged to the LLM instead of
+        being retried blindly.
         """
 
         if not task.strip():
@@ -126,6 +134,7 @@ class Agent:
 
         tools = tools or []
         current_task = task
+        history: list[_AttemptRecord] = []
 
         for _ in range(max_retries + 1):
             response = self.run_with_tools(
@@ -147,26 +156,44 @@ class Agent:
             if verification.passed:
                 return result
 
+            history.append(
+                _AttemptRecord(
+                    answer=response.content,
+                    reason=verification.reason,
+                )
+            )
+
             current_task = self._build_retry_task(
                 task,
-                verification,
+                history,
             )
 
         return result
+
     def _build_retry_task(
         self,
         task: str,
-        verification: VerificationResult,
+        history: list[_AttemptRecord],
     ) -> str:
-        """Build the next attempt's task, including failure feedback."""
+        """
+        Build the next attempt's task, including feedback built from
+        every previous failed attempt so far.
+        """
 
-        return (
-            f"{task}\n\n"
-            f"Your previous attempt was incorrect.\n"
-            f"Reason: {verification.reason}\n"
-            f"Please try again and correct the mistake."
+        lines = [task, ""]
+
+        for attempt in history:
+            lines.append(
+                f"You already tried '{attempt.answer}' and it "
+                f"was rejected."
+            )
+            lines.append(f"Reason: {attempt.reason}")
+
+        lines.append(
+            "Please try a different answer and correct the mistake."
         )
 
+        return "\n".join(lines)
     def run_with_tools(
         self,
         task: str,
@@ -267,7 +294,6 @@ class Agent:
         """Build the next LLM context using tool observations."""
 
         observations = []
-
         for tool_result in tool_results:
             if tool_result.is_success:
                 observations.append(
@@ -289,4 +315,3 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
-    
