@@ -103,9 +103,12 @@ class Agent:
     ) -> VerifiedAgentResult:
         """
         Execute a task through the full execution loop, verify the
-        result, and retry the entire loop on verification failure.
+        result, and retry on failure.
 
-        Recovery is currently implemented as a simple retry strategy.
+        On each failed attempt, the verifier's failure reason is
+        appended to the task as feedback for the next attempt, so
+        the LLM has a concrete signal to correct instead of
+        repeating an identical prompt blindly.
         """
 
         if not task.strip():
@@ -122,10 +125,11 @@ class Agent:
             )
 
         tools = tools or []
+        current_task = task
 
         for _ in range(max_retries + 1):
             response = self.run_with_tools(
-                task,
+                current_task,
                 tools,
                 max_iterations=max_iterations,
             )
@@ -143,7 +147,25 @@ class Agent:
             if verification.passed:
                 return result
 
+            current_task = self._build_retry_task(
+                task,
+                verification,
+            )
+
         return result
+    def _build_retry_task(
+        self,
+        task: str,
+        verification: VerificationResult,
+    ) -> str:
+        """Build the next attempt's task, including failure feedback."""
+
+        return (
+            f"{task}\n\n"
+            f"Your previous attempt was incorrect.\n"
+            f"Reason: {verification.reason}\n"
+            f"Please try again and correct the mistake."
+        )
 
     def run_with_tools(
         self,
@@ -153,6 +175,7 @@ class Agent:
     ) -> LLMResponse:
         """
         Execute a task using an LLM and registered tools.
+
         The agent repeatedly asks the LLM for a decision. If the
         LLM requests a tool, the agent executes it, creates a
         ToolResult, adds the observation to the context, and asks
@@ -266,3 +289,4 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
+    
