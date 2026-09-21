@@ -117,20 +117,27 @@ class CalculatorVerifier(Verifier):
         self,
         task: str,
     ) -> str | None:
-        """Extract a basic arithmetic expression from a task."""
+        """
+        Extract a basic arithmetic expression from a task.
+
+        Supports parentheses in addition to plain sequences of
+        numbers and operators.
+        """
 
         match = re.search(
-            r"(?P<expression>"
-            r"-?\d+(?:\.\d+)?"
-            r"(?:\s*[+\-*/]\s*-?\d+(?:\.\d+)?)+"
-            r")",
+            r"[\d.\+\-\*/\(\)\s]+",
             task,
         )
 
         if match is None:
             return None
 
-        return match.group("expression")
+        candidate = match.group().strip()
+
+        if not any(op in candidate for op in "+-*/"):
+            return None
+
+        return candidate
 
     def _evaluate_expression(
         self,
@@ -200,21 +207,28 @@ class CalculatorVerifier(Verifier):
         self,
         result: str,
     ) -> float | None:
-        """Extract the first numeric value from an agent result."""
+        """
+        Extract the final numeric value from an agent result.
 
-        match = re.search(
+        Natural-language answers usually restate the original
+        numbers before arriving at the final answer (e.g.
+        "10 / 4 = 2.5" or a multi-step derivation ending in
+        "Answer: 45"), so the *last* number in the text is used
+        rather than the first.
+        """
+
+        matches = re.findall(
             r"[-+]?(?:\d+(?:\.\d+)?|\.\d+)",
             result,
         )
 
-        if match is None:
+        if not matches:
             return None
 
         try:
-            return float(match.group())
+            return float(matches[-1])
         except ValueError:
             return None
-
     def _numbers_equal(
         self,
         expected: float | int,
