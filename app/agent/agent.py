@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.agent.models import ToolResult
+from app.agent.state import ExecutionState
 from app.agent.verification import (
     VerificationResult,
     Verifier,
@@ -12,10 +13,11 @@ from app.tools.registry import ToolRegistry
 
 @dataclass
 class VerifiedAgentResult:
-    """Represents an agent response together with verification."""
+    """Represents an agent response together with verification and state."""
 
     response: LLMResponse
     verification: VerificationResult
+    state: ExecutionState
 
     @property
     def content(self) -> str:
@@ -86,10 +88,13 @@ class Agent:
                 "Verifier is not configured."
             )
 
+        state = ExecutionState()
+
         response = self.run_with_tools(
             task,
             tools or [],
             max_iterations=max_iterations,
+            state=state,
         )
 
         verification = self.verifier.verify(
@@ -100,6 +105,7 @@ class Agent:
         return VerifiedAgentResult(
             response=response,
             verification=verification,
+            state=state,
         )
 
     def run_with_recovery(
@@ -116,7 +122,9 @@ class Agent:
         Every failed attempt is recorded. Each retry's task includes
         feedback built from the full attempt history, so a repeated
         wrong answer is explicitly flagged to the LLM instead of
-        being retried blindly.
+        being retried blindly. Iteration, tool-call, and retry counts
+        are accumulated into a single ExecutionState across all
+        attempts.
         """
 
         if not task.strip():
@@ -135,12 +143,16 @@ class Agent:
         tools = tools or []
         current_task = task
         history: list[_AttemptRecord] = []
+        state = ExecutionState()
 
-        for _ in range(max_retries + 1):
+        for attempt_index in range(max_retries + 1):
+            state.retries = attempt_index
+
             response = self.run_with_tools(
                 current_task,
                 tools,
                 max_iterations=max_iterations,
+                state=state,
             )
 
             verification = self.verifier.verify(
@@ -151,6 +163,7 @@ class Agent:
             result = VerifiedAgentResult(
                 response=response,
                 verification=verification,
+                state=state,
             )
 
             if verification.passed:
@@ -194,11 +207,13 @@ class Agent:
         )
 
         return "\n".join(lines)
+
     def run_with_tools(
         self,
         task: str,
         tools: list[dict],
         max_iterations: int = 5,
+        state: ExecutionState | None = None,
     ) -> LLMResponse:
         """
         Execute a task using an LLM and registered tools.
@@ -207,6 +222,10 @@ class Agent:
         LLM requests a tool, the agent executes it, creates a
         ToolResult, adds the observation to the context, and asks
         the LLM again.
+
+        If an ExecutionState is provided, iteration and tool-call
+        counts are accumulated into it; otherwise state tracking is
+        skipped entirely and behavior is unchanged.
         """
 
         if not task.strip():
@@ -220,6 +239,9 @@ class Agent:
         context = task
 
         for _ in range(max_iterations):
+            if state is not None:
+                state.iterations += 1
+
             response = self.llm_client.generate_with_tools(
                 context,
                 tools,
@@ -232,6 +254,9 @@ class Agent:
 
             for tool_call in response.tool_calls:
                 tool_result = self._execute_tool_call(tool_call)
+
+                if state is not None:
+                    state.tool_calls_made += 1
 
                 tool_results.append(tool_result)
 
@@ -294,6 +319,7 @@ class Agent:
         """Build the next LLM context using tool observations."""
 
         observations = []
+
         for tool_result in tool_results:
             if tool_result.is_success:
                 observations.append(
@@ -315,3 +341,4 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
+        
