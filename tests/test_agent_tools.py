@@ -3,6 +3,7 @@ from app.llm.client import LLMClient
 from app.llm.models import LLMResponse
 from app.tools.calculator import CalculatorTool
 from app.tools.registry import ToolRegistry
+from app.tools.text_analyzer import TextAnalyzerTool
 
 
 class MockLLMClient(LLMClient):
@@ -83,3 +84,21 @@ def test_agent_propagates_calculator_error():
         raise AssertionError(
             "Expected ValueError from calculator."
         )
+
+
+def test_agent_runs_text_analyzer():
+    registry = ToolRegistry()
+    registry.register(CalculatorTool())
+    registry.register(TextAnalyzerTool())
+
+    agent = Agent(
+        llm_client=MockLLMClient(),
+        tool_registry=registry,
+    )
+
+    result = agent.run_tool(
+        "text_analyzer",
+        "Hello world",
+    )
+
+    assert result == "words: 2, characters: 11"
