@@ -14,3 +14,4 @@ class ExecutionState:
     iterations: int = 0
     tool_calls_made: int = 0
     retries: int = 0
+    tool_retries: int = 0

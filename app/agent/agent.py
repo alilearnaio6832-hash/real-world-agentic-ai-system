@@ -122,9 +122,9 @@ class Agent:
         Every failed attempt is recorded. Each retry's task includes
         feedback built from the full attempt history, so a repeated
         wrong answer is explicitly flagged to the LLM instead of
-        being retried blindly. Iteration, tool-call, and retry counts
-        are accumulated into a single ExecutionState across all
-        attempts.
+        being retried blindly. Iteration, tool-call, tool-retry, and
+        retry counts are accumulated into a single ExecutionState
+        across all attempts.
         """
 
         if not task.strip():
@@ -147,7 +147,6 @@ class Agent:
 
         for attempt_index in range(max_retries + 1):
             state.retries = attempt_index
-
             response = self.run_with_tools(
                 current_task,
                 tools,
@@ -223,9 +222,9 @@ class Agent:
         ToolResult, adds the observation to the context, and asks
         the LLM again.
 
-        If an ExecutionState is provided, iteration and tool-call
-        counts are accumulated into it; otherwise state tracking is
-        skipped entirely and behavior is unchanged.
+        If an ExecutionState is provided, iteration, tool-call, and
+        tool-retry counts are accumulated into it; otherwise state
+        tracking is skipped entirely and behavior is unchanged.
         """
 
         if not task.strip():
@@ -253,7 +252,10 @@ class Agent:
             tool_results: list[ToolResult] = []
 
             for tool_call in response.tool_calls:
-                tool_result = self._execute_tool_call(tool_call)
+                tool_result = self._execute_tool_call(
+                    tool_call,
+                    state,
+                )
 
                 if state is not None:
                     state.tool_calls_made += 1
@@ -270,31 +272,51 @@ class Agent:
             "Agent execution exceeded maximum iterations."
         )
 
-    def _execute_tool_call(self, tool_call) -> ToolResult:
-        """Execute one LLM-requested tool call."""
+    def _execute_tool_call(
+        self,
+        tool_call,
+        state: ExecutionState | None = None,
+        max_tool_retries: int = 1,
+    ) -> ToolResult:
+        """
+        Execute one LLM-requested tool call.
 
-        try:
-            tool_input = self._serialize_tool_arguments(
-                tool_call.arguments
-            )
+        If the tool raises an exception, it is retried up to
+        max_tool_retries times with the same input before the
+        failure is reported in the ToolResult. This handles
+        transient tool failures without involving the LLM or the
+        verification/recovery layer.
+        """
 
-            result = self.run_tool(
-                tool_call.name,
-                tool_input,
-            )
+        tool_input = self._serialize_tool_arguments(
+            tool_call.arguments
+        )
 
-            return ToolResult(
-                tool_call_id=tool_call.id,
-                name=tool_call.name,
-                result=result,
-            )
+        last_error: Exception | None = None
+        for attempt in range(max_tool_retries + 1):
+            try:
+                result = self.run_tool(
+                    tool_call.name,
+                    tool_input,
+                )
 
-        except Exception as exc:
-            return ToolResult(
-                tool_call_id=tool_call.id,
-                name=tool_call.name,
-                error=str(exc),
-            )
+                return ToolResult(
+                    tool_call_id=tool_call.id,
+                    name=tool_call.name,
+                    result=result,
+                )
+
+            except Exception as exc:
+                last_error = exc
+
+                if attempt < max_tool_retries and state is not None:
+                    state.tool_retries += 1
+
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            name=tool_call.name,
+            error=str(last_error),
+        )
 
     def _serialize_tool_arguments(
         self,
@@ -341,4 +363,3 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
-        
