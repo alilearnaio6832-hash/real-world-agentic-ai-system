@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.agent.models import ToolResult
+from app.agent.planning import Planner
 from app.agent.state import ExecutionState
 from app.agent.verification import (
     VerificationResult,
@@ -24,6 +25,20 @@ class VerifiedAgentResult:
         """Return the final agent response content."""
 
         return self.response.content
+
+
+@dataclass
+class PlanningResult:
+    """Represents the outcome of executing a task through a plan."""
+
+    step_results: list[str]
+    state: ExecutionState
+
+    @property
+    def content(self) -> str:
+        """Return the final step's result as the overall answer."""
+
+        return self.step_results[-1]
 
 
 @dataclass
@@ -66,6 +81,65 @@ class Agent:
             tool_name,
             tool_input,
         )
+
+    def run_with_planning(
+        self,
+        task: str,
+        tools: list[dict],
+        planner: Planner,
+        max_iterations: int = 5,
+    ) -> PlanningResult:
+        """
+        Break a task into an ordered plan, then execute each step in
+        sequence through the full execution loop.
+
+        Each step's task includes the results of all previous steps
+        as context, so later steps can build on earlier results. The
+        final step's result is treated as the overall answer.
+        """
+
+        if not task.strip():
+            raise ValueError("Task cannot be empty.")
+
+        plan = planner.create_plan(task)
+
+        state = ExecutionState()
+        step_results: list[str] = []
+
+        for step in plan.steps:
+            step_task = self._build_step_task(step, step_results)
+
+            response = self.run_with_tools(
+                step_task,
+                tools,
+                max_iterations=max_iterations,
+                state=state,
+            )
+
+            step_results.append(response.content)
+            state.steps_executed += 1
+
+        return PlanningResult(
+            step_results=step_results,
+            state=state,
+        )
+
+    def _build_step_task(
+        self,
+        step: str,
+        previous_results: list[str],
+    ) -> str:
+        """Build one step's task, including prior steps' results as context."""
+
+        if not previous_results:
+            return step
+
+        lines = [step, "", "Context from previous steps:"]
+
+        for index, result in enumerate(previous_results, start=1):
+            lines.append(f"Step {index} result: {result}")
+
+        return "\n".join(lines)
 
     def run_with_verification(
         self,
@@ -147,6 +221,7 @@ class Agent:
 
         for attempt_index in range(max_retries + 1):
             state.retries = attempt_index
+
             response = self.run_with_tools(
                 current_task,
                 tools,
@@ -226,7 +301,6 @@ class Agent:
         tool-retry counts are accumulated into it; otherwise state
         tracking is skipped entirely and behavior is unchanged.
         """
-
         if not task.strip():
             raise ValueError("Task cannot be empty.")
 
@@ -293,6 +367,7 @@ class Agent:
         )
 
         last_error: Exception | None = None
+
         for attempt in range(max_tool_retries + 1):
             try:
                 result = self.run_tool(
@@ -363,3 +438,5 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
+
+    
