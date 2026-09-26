@@ -5,6 +5,8 @@ from app.config import settings
 from app.llm.client import LLMClient, LLMError
 from app.llm.models import LLMResponse, ToolCall
 
+_DEFAULT_MAX_OUTPUT_TOKENS = 8192
+
 
 class OllamaLLMClient(LLMClient):
     """LLM client implementation for Ollama."""
@@ -13,11 +15,13 @@ class OllamaLLMClient(LLMClient):
         self,
         model: str | None = None,
         base_url: str | None = None,
+        max_output_tokens: int = _DEFAULT_MAX_OUTPUT_TOKENS,
     ) -> None:
         self.model = model or settings.OLLAMA_MODEL
         self.base_url = (
             base_url or settings.OLLAMA_BASE_URL
         ).rstrip("/")
+        self.max_output_tokens = max_output_tokens
 
     def generate(self, prompt: str) -> str:
         """Generate a text response using Ollama."""
@@ -29,6 +33,9 @@ class OllamaLLMClient(LLMClient):
             "model": self.model,
             "prompt": prompt,
             "stream": False,
+            "options": {
+                "num_predict": self.max_output_tokens,
+            },
         }
 
         data = json.dumps(payload).encode("utf-8")
@@ -85,6 +92,9 @@ class OllamaLLMClient(LLMClient):
             ],
             "tools": tools,
             "stream": False,
+            "options": {
+                "num_predict": self.max_output_tokens,
+            },
         }
 
         data = json.dumps(payload).encode("utf-8")
@@ -134,7 +144,6 @@ class OllamaLLMClient(LLMClient):
             )
 
         tool_calls: list[ToolCall] = []
-
         for raw_call in raw_tool_calls:
             if not isinstance(raw_call, dict):
                 raise LLMError(
@@ -142,11 +151,11 @@ class OllamaLLMClient(LLMClient):
                 )
 
             function = raw_call.get("function", {})
+
             if not isinstance(function, dict):
                 raise LLMError(
-        "Ollama tool call contains invalid function data."
-    )
-
+                    "Ollama tool call contains invalid function data."
+                )
 
             call_id = raw_call.get("id", "")
             name = function.get("name")

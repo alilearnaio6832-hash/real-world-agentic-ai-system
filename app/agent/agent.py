@@ -288,6 +288,7 @@ class Agent:
         tools: list[dict],
         max_iterations: int = 5,
         state: ExecutionState | None = None,
+        max_empty_response_retries: int = 1,
     ) -> LLMResponse:
         """
         Execute a task using an LLM and registered tools.
@@ -296,11 +297,20 @@ class Agent:
         LLM requests a tool, the agent executes it, creates a
         ToolResult, adds the observation to the context, and asks
         the LLM again.
+        If the LLM returns a final (non-tool-call) response with
+        empty content, the same request is retried up to
+        max_empty_response_retries times before raising a
+        RuntimeError. An empty response is never treated as a valid
+        answer, since some models (particularly ones with extended
+        "thinking" behavior) can exhaust their output budget before
+        producing any final content.
 
-        If an ExecutionState is provided, iteration, tool-call, and
-        tool-retry counts are accumulated into it; otherwise state
-        tracking is skipped entirely and behavior is unchanged.
+        If an ExecutionState is provided, iteration, tool-call,
+        tool-retry, and empty-response-retry counts are accumulated
+        into it; otherwise state tracking is skipped entirely and
+        behavior is unchanged.
         """
+
         if not task.strip():
             raise ValueError("Task cannot be empty.")
 
@@ -315,9 +325,11 @@ class Agent:
             if state is not None:
                 state.iterations += 1
 
-            response = self.llm_client.generate_with_tools(
+            response = self._generate_non_empty_response(
                 context,
                 tools,
+                state,
+                max_empty_response_retries,
             )
 
             if not response.has_tool_calls:
@@ -344,6 +356,37 @@ class Agent:
 
         raise RuntimeError(
             "Agent execution exceeded maximum iterations."
+        )
+
+    def _generate_non_empty_response(
+        self,
+        context: str,
+        tools: list[dict],
+        state: ExecutionState | None,
+        max_empty_response_retries: int,
+    ) -> LLMResponse:
+        """
+        Call the LLM, retrying if it returns an empty final response.
+
+        A response with tool calls is never considered empty, even
+        if its content field is blank, since the tool calls are the
+        meaningful output in that case.
+        """
+
+        for attempt in range(max_empty_response_retries + 1):
+            response = self.llm_client.generate_with_tools(
+                context,
+                tools,
+            )
+
+            if response.has_tool_calls or response.content.strip():
+                return response
+
+            if attempt < max_empty_response_retries and state is not None:
+                state.empty_response_retries += 1
+
+        raise RuntimeError(
+            "LLM returned an empty response after retrying."
         )
 
     def _execute_tool_call(
@@ -383,7 +426,6 @@ class Agent:
 
             except Exception as exc:
                 last_error = exc
-
                 if attempt < max_tool_retries and state is not None:
                     state.tool_retries += 1
 
@@ -438,5 +480,3 @@ class Agent:
             f"{observation_text}\n\n"
             f"Use these observations to continue the task."
         )
-
-    

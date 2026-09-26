@@ -17,3 +17,4 @@ class ExecutionState:
     retries: int = 0
     tool_retries: int = 0
     steps_executed: int = 0
+    empty_response_retries: int = 0
