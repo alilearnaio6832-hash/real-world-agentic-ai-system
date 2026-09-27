@@ -1,3 +1,13 @@
+\[9/27/2026 2:50 PM] Myself IR\_MCI: ## به‌روزرسانی README.md
+
+
+
+notepad README.md
+
+فایل رو کامل با محتوای زیر جایگزین کن:
+
+
+
 \# Real-World Agentic AI System
 
 
@@ -8,11 +18,11 @@ principles — not a LangChain wrapper. This project demonstrates real
 
 agentic engineering: planning, tool use, observation, verification,
 
-recovery, execution state tracking, and evaluation, with every claim
+recovery, execution state tracking, evaluation, an HTTP API, and
 
-backed by a passing test suite and a real evaluation run against a
+containerized deployment, with every claim backed by a passing test
 
-local LLM.
+suite and real evaluation runs against a local LLM.
 
 
 
@@ -30,11 +40,11 @@ strictly separating two concerns:
 
 
 
-\- Intelligence (the LLM) decides \*what\* to do — which tool to
+\- \*\*Intelligence\*\* (the LLM) decides \*what\* to do — which tool to
 
-&#x20; call, how to phrase an answer.
+&#x20; call, how to break a task into steps, how to phrase an answer.
 
-\- Reliability (a deterministic, rule-based verification and
+\- \*\*Reliability\*\* (a deterministic, rule-based verification and
 
 &#x20; recovery layer) decides \*whether the result is actually correct\* —
 
@@ -44,7 +54,9 @@ strictly separating two concerns:
 
 This separation is why Verification and Recovery were prioritized
 
-early in this project, ahead of Planning and API/Deployment work.
+early in this project, ahead of Planning and the API/Deployment work
+
+that followed.
 
 
 
@@ -52,9 +64,21 @@ early in this project, ahead of Planning and API/Deployment work.
 
 
 
-
-
 User Task
+
+&#x20;  |
+
+&#x20;  v
+
+Agent.run\_with\_planning()  \[optional multi-step entry point]
+
+&#x20;  |
+
+&#x20;  +--> Planner.create\_plan()  --> ordered list of steps
+
+&#x20;  |
+
+&#x20;  +--> for each step:
 
 &#x20;  |
 
@@ -69,6 +93,12 @@ Agent.run\_with\_recovery()
 &#x20;  |        |
 
 &#x20;  |        +--> LLM.generate\_with\_tools()
+
+&#x20;  |        |        |
+
+&#x20;  |        |        +--> empty response? --> retried once, then
+
+&#x20;  |        |        |                        controlled RuntimeError
 
 &#x20;  |        |        |
 
@@ -120,9 +150,31 @@ Agent.run\_with\_recovery()
 
 &#x20;  v
 
-ExecutionState (iterations, tool\_calls\_made, tool\_retries, retries)
+ExecutionState (iterations, tool\_calls\_made, tool\_retries,
 
-&#x20;  attached to every VerifiedAgentResult for observability
+&#x20;  empty\_response\_retries, retries, steps\_executed)
+
+&#x20;  attached to every result for observability
+
+
+
+FastAPI (app/api.py)
+
+&#x20;  POST /run    --> runs a task through run\_with\_recovery
+
+&#x20;  GET  /health --> liveness check
+
+
+
+Docker
+
+&#x20;  Containerizes the FastAPI app; connects to Ollama running on the
+
+&#x20;  host machine via host.docker.internal (the LLM itself is not
+
+&#x20;  containerized — it's treated as an external dependency).
+
+`
 
 
 
@@ -134,31 +186,33 @@ ExecutionState (iterations, tool\_calls\_made, tool\_retries, retries)
 
 |---|---|---|
 
-| LLM Interface | Done | Provider-agnostic (LLMClient), Ollama implementation |
+| LLM Interface | Done | Provider-agnostic (`LLMClient`), Ollama implementation |
 
-| Tool System | Done | Tool ABC, ToolRegistry, 2 tools registered |
+| Tool System | Done | `Tool` ABC, `ToolRegistry`, 2 tools registered |
 
-| Calculator Tool | Done | AST-based safe evaluation, no eval() |
+| Calculator Tool | Done | AST-based safe evaluation, no `eval()` |
 
 | Text Analyzer Tool | Done | Word/character counting |
 
 | Execution Loop | Done | Bounded iterations, tool-call observation fed back to LLM |
 
-| Verification | Done | CalculatorVerifier — rule-based, AST-evaluated, extracts the correct number from natural-language LLM output (handles reasoning chains, LaTeX-style notation, parenthesized expressions) |
+| Planning | Done | `Planner` breaks a task into ordered steps via a constrained LLM prompt format; `run\_with\_planning` executes them in sequence with prior results as context |
+
+\[9/27/2026 2:50 PM] Myself IR\_MCI: | Verification | Done | CalculatorVerifier — rule-based, AST-evaluated, extracts the correct number from natural-language LLM output (handles reasoning chains, LaTeX-style notation, parenthesized expressions) |
 
 | Recovery (verification failures) | Done | Retry with injected failure reason; tracks full attempt history; explicitly flags repeated wrong answers to the LLM |
 
-\[9/22/2026 2:41 PM] Math: | Recovery (tool failures) | Done | Transient tool errors are retried once before being reported, independent of the verification/recovery layer |
+| Recovery (tool failures) | Done | Transient tool errors are retried once before being reported, independent of the verification/recovery layer |
 
-| Execution State | Done | Tracks iterations, tool calls, tool retries, and verification retries per run |
+| Recovery (empty LLM responses) | Done | Some models exhaust their output budget on internal "thinking" before producing content; empty final responses are retried once, then raise a controlled error rather than being treated as valid |
+
+| Execution State | Done | Tracks iterations, tool calls, tool retries, empty-response retries, verification retries, and steps executed per run |
 
 | Evaluation | Done | Evaluator + EvaluationCase harness; measures real Task Success Rate against a live LLM |
 
-| Planning / Task Decomposition | Not started | Tasks are currently executed as-is; no multi-step decomposition yet |
+| API | Done | FastAPI with POST /run and GET /health, dependency-injected agent for testability |
 
-| API (FastAPI) | Not started | |
-
-| Deployment (Docker, logging, monitoring) | Not started | |
+| Deployment | Done | Dockerfile (python:3.11-slim), connects to host-run Ollama via host.docker.internal |
 
 
 
@@ -192,15 +246,37 @@ answer instead of the last, and didn't support parenthesized
 
 expressions. Both were fixed with a test-first approach and verified
 
-against the live model, not just mocks. This is the intended purpose
+against the live model, not just mocks.
 
-of the evaluation harness: catching reliability bugs that unit tests
 
-with mocks cannot.
+
+A second round of evaluation, this time against run\_with\_planning
+
+(scripts/run\_planning\_evaluation.py), surfaced a deeper reliability
+
+issue: this particular model can spend its entire output token budget
+
+on internal "thinking" before ever producing final content, returning
+
+an empty response. This was root-caused by inspecting the raw Ollama
+
+API response (not guessed at), fixed by increasing the output token
+
+budget and adding explicit empty-response retry logic in the
+
+execution loop, then confirmed stable across repeated live runs.
+
+
+
+This is the intended purpose of the evaluation harness: catching
+
+reliability bugs that unit tests with mocks cannot.
 
 
 
 \## Project Structure
+
+
 
 
 
@@ -210,11 +286,15 @@ app/
 
 &#x20;   agent.py         Agent: run, run\_tool, run\_with\_tools,
 
-&#x20;                     run\_with\_verification, run\_with\_recovery
+&#x20;                     run\_with\_verification, run\_with\_recovery,
+
+&#x20;                     run\_with\_planning
 
 &#x20;   models.py         ToolResult
 
 &#x20;   state.py          ExecutionState
+
+&#x20;   planning.py        Planner, Plan
 
 &#x20;   verification.py   Verifier, VerificationResult, CalculatorVerifier
 
@@ -238,11 +318,19 @@ app/
 
 &#x20;   cases.py          Benchmark case definitions
 
+&#x20; api.py              FastAPI app (/run, /health)
+
 scripts/
 
-&#x20; run\_evaluation.py   Runs the evaluation harness against live Ollama
+&#x20; run\_evaluation.py           Runs the calculator evaluation harness
 
-tests/                60+ tests covering every layer above
+&#x20; run\_planning\_evaluation.py  Runs the planning evaluation harness
+
+tests/                87+ tests covering every layer above
+
+Dockerfile
+
+.dockerignore
 
 
 
@@ -255,6 +343,10 @@ Requirements: Python 3.11+, \[Ollama](https://ollama.com) running
 locally with a tool-calling-capable model pulled (this project was
 
 developed against qwen3.5:latest).
+
+
+
+\### Local
 
 
 
@@ -282,13 +374,47 @@ OLLAMA\_MODEL=qwen3.5:latest
 
 
 
-Running Tests
+Run the API:
+
+
+
+powershell
+
+uvicorn app.api:app --reload
+
+`
+
+\[9/27/2026 2:50 PM] Myself IR\_MCI: Then open http://127.0.0.1:8000/docs for the interactive API
+
+explorer.
+
+
+
+\### Docker
+
+
+
+Make sure Ollama is running on the host machine, then:
+
+
+
+docker build -t agentic-ai-system .
+
+docker run -p 8000:8000 agentic-ai-system
+
+The container reaches the host's Ollama instance via
+
+host.docker.internal (works on Docker Desktop for Windows/Mac).
+
+
+
+\## Running Tests
+
+
 
 pytest -v
 
-
-
-Running the Evaluation Harness
+\## Running the Evaluation Harnesses
 
 
 
@@ -298,7 +424,7 @@ Make sure Ollama is running and the configured model is pulled, then:
 
 python -m scripts.run\_evaluation
 
-
+python -m scripts.run\_planning\_evaluation
 
 \## Roadmap
 
@@ -318,11 +444,17 @@ rather than a later addition.
 
 \- \[x] V0.1 — multi-tool agent (2 tools registered)
 
-\- \[ ] V0.2 — planning and task decomposition (execution loop is done;
+\- \[x] V0.2 — planning and task decomposition
 
-&#x20;     true multi-step planning is not yet implemented)
+\- \[x] V1 — verification, recovery (verification/tool/empty-response),
 
-\- \[ ] V1 — adds a FastAPI interface and Docker-based deployment
+&#x20;     execution state, evaluation, FastAPI, Docker deployment
+
+
+
+All milestones above are tagged in the commit history
+
+(v0.1.0-multi-tool, v0.2.0-planning, v1.0.0).
 
 
 
@@ -331,6 +463,4 @@ rather than a later addition.
 
 
 MIT
-
-
 
