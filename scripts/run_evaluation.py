@@ -29,6 +29,8 @@ def main() -> None:
 
         print(f"[{status}] {case_result.case_name}")
         print(f"    Reason: {case_result.verification_reason}")
+        print(f"    Time: {case_result.elapsed_seconds:.2f}s")
+        print(f"    Tokens: {case_result.total_tokens}")
 
         if case_result.error:
             print(f"    Error: {case_result.error}")
@@ -37,6 +39,8 @@ def main() -> None:
     print(f"Total cases:   {result.total_cases}")
     print(f"Passed cases:  {result.passed_cases}")
     print(f"Success rate:  {result.success_rate:.1%}")
+    print(f"Total time:    {result.total_elapsed_seconds:.2f}s")
+    print(f"Total tokens:  {result.total_tokens}")
     print("=" * 60)
 
 

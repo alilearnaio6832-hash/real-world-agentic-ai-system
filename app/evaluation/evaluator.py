@@ -22,6 +22,8 @@ class CaseResult:
     used_tool_call: bool
     verification_reason: str
     error: str | None = None
+    elapsed_seconds: float = 0.0
+    total_tokens: int = 0
 
 
 @dataclass
@@ -68,6 +70,22 @@ class EvaluationResult:
         )
 
         return correct / len(relevant)
+
+    @property
+    def total_elapsed_seconds(self) -> float:
+        """Sum of elapsed time across all cases."""
+
+        return sum(
+            result.elapsed_seconds for result in self.case_results
+        )
+
+    @property
+    def total_tokens(self) -> int:
+        """Sum of token usage across all cases."""
+
+        return sum(
+            result.total_tokens for result in self.case_results
+        )
 
 
 class Evaluator:
@@ -120,6 +138,8 @@ class Evaluator:
                 passed=verified_result.verification.passed,
                 used_tool_call=used_tool_call,
                 verification_reason=verified_result.verification.reason,
+                elapsed_seconds=verified_result.state.elapsed_seconds,
+                total_tokens=verified_result.state.total_tokens,
             )
 
         except Exception as exc:
