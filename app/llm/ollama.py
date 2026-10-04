@@ -184,7 +184,17 @@ class OllamaLLMClient(LLMClient):
                 )
             )
 
+        prompt_tokens = response_data.get("prompt_eval_count", 0)
+        output_tokens = response_data.get("eval_count", 0)
+
+        if not isinstance(prompt_tokens, int):
+            prompt_tokens = 0
+
+        if not isinstance(output_tokens, int):
+            output_tokens = 0
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
+            token_count=prompt_tokens + output_tokens,
         )

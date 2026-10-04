@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 
 from app.agent.models import ToolResult
@@ -196,9 +197,9 @@ class Agent:
         Every failed attempt is recorded. Each retry's task includes
         feedback built from the full attempt history, so a repeated
         wrong answer is explicitly flagged to the LLM instead of
-        being retried blindly. Iteration, tool-call, tool-retry, and
-        retry counts are accumulated into a single ExecutionState
-        across all attempts.
+        being retried blindly. Iteration, tool-call, tool-retry,
+        empty-response-retry, timing, and token counts are
+        accumulated into a single ExecutionState across all attempts.
         """
 
         if not task.strip():
@@ -297,6 +298,7 @@ class Agent:
         LLM requests a tool, the agent executes it, creates a
         ToolResult, adds the observation to the context, and asks
         the LLM again.
+
         If the LLM returns a final (non-tool-call) response with
         empty content, the same request is retried up to
         max_empty_response_retries times before raising a
@@ -306,9 +308,9 @@ class Agent:
         producing any final content.
 
         If an ExecutionState is provided, iteration, tool-call,
-        tool-retry, and empty-response-retry counts are accumulated
-        into it; otherwise state tracking is skipped entirely and
-        behavior is unchanged.
+        tool-retry, empty-response-retry, elapsed time, and token
+        counts are accumulated into it; otherwise state tracking is
+        skipped entirely and behavior is unchanged.
         """
 
         if not task.strip():
@@ -370,14 +372,26 @@ class Agent:
 
         A response with tool calls is never considered empty, even
         if its content field is blank, since the tool calls are the
-        meaningful output in that case.
+        meaningful output in that case. Elapsed time and token usage
+        are recorded for every call, including ones that turn out to
+        be empty, since those calls still consumed real time and
+        tokens (e.g. a model burning its budget on internal
+        "thinking").
         """
 
         for attempt in range(max_empty_response_retries + 1):
+            call_start = time.monotonic()
+
             response = self.llm_client.generate_with_tools(
                 context,
                 tools,
             )
+
+            if state is not None:
+                state.elapsed_seconds += (
+                    time.monotonic() - call_start
+                )
+                state.total_tokens += response.token_count
 
             if response.has_tool_calls or response.content.strip():
                 return response
@@ -426,6 +440,7 @@ class Agent:
 
             except Exception as exc:
                 last_error = exc
+
                 if attempt < max_tool_retries and state is not None:
                     state.tool_retries += 1
 

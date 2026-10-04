@@ -51,6 +51,8 @@ class ExecutionStateResponse(BaseModel):
     retries: int
     tool_retries: int
     empty_response_retries: int
+    elapsed_seconds: float
+    total_tokens: int
 
 
 class RunTaskResponse(BaseModel):
@@ -87,6 +89,8 @@ def run_task(
             retries=result.state.retries,
             tool_retries=result.state.tool_retries,
             empty_response_retries=result.state.empty_response_retries,
+            elapsed_seconds=result.state.elapsed_seconds,
+            total_tokens=result.state.total_tokens,
         ),
     )
 

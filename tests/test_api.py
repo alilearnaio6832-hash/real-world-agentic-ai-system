@@ -11,7 +11,11 @@ class MockAgent:
     """Mock Agent for API tests, avoiding real LLM calls."""
 
     def run_with_recovery(self, task: str, max_retries: int = 1):
-        state = ExecutionState(iterations=1)
+        state = ExecutionState(
+            iterations=1,
+            elapsed_seconds=0.5,
+            total_tokens=42,
+        )
 
         return VerifiedAgentResult(
             response=LLMResponse(content="100"),
@@ -46,6 +50,8 @@ def test_run_endpoint_returns_successful_result():
     assert data["content"] == "100"
     assert data["verification_passed"] is True
     assert data["state"]["iterations"] == 1
+    assert data["state"]["elapsed_seconds"] == 0.5
+    assert data["state"]["total_tokens"] == 42
 
 
 def test_run_endpoint_rejects_missing_task():

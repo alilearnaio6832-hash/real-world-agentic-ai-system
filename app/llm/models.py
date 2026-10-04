@@ -19,6 +19,7 @@ class LLMResponse:
     tool_calls: list[ToolCall] = field(
         default_factory=list
     )
+    token_count: int = 0
 
     @property
     def has_tool_calls(self) -> bool:

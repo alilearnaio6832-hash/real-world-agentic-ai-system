@@ -18,3 +18,5 @@ class ExecutionState:
     tool_retries: int = 0
     steps_executed: int = 0
     empty_response_retries: int = 0
+    elapsed_seconds: float = 0.0
+    total_tokens: int = 0
