@@ -1,5 +1,7 @@
 # Real-World Agentic AI System
 
+!\[Architecture](architecture.svg)
+
 I built this to actually understand how a reliable agent should work — not another LangChain wrapper, but planning, tool use, verification, and recovery built from scratch so I know exactly what's happening at every step.
 
 The core idea driving the design: a stronger LLM should make the system smarter, but a weaker one shouldn't make it wrong. So the LLM only decides *what* to do (which tool, how to phrase things, how to break a task down). A separate, deterministic verification layer decides whether the result is actually correct — completely independent of how confident the LLM sounds.
@@ -12,12 +14,12 @@ That's also why verification and recovery got built before planning and the API.
 User Task
    |
    v
-run_with_planning()  (optional — breaks the task into ordered steps)
+run\_with\_planning()  (optional — breaks the task into ordered steps)
    |
    v
-run_with_recovery()
+run\_with\_recovery()
    |
-   +--> run_with_tools()   (bounded execution loop)
+   +--> run\_with\_tools()   (bounded execution loop)
    |        |
    |        +--> LLM decides: answer, or call a tool?
    |        |       tool call --> Tool Registry --> ToolResult
@@ -40,13 +42,13 @@ Docker packages the API; it talks to Ollama on the host machine.
 
 ## What's actually working
 
-- **Two tools**: a safe AST-based calculator (no `eval()`) and a basic text analyzer.
-- **Execution loop** with bounded iterations, tool observations fed back into context.
-- **Planning**: breaks a task into steps via a constrained prompt format, then runs each step with the previous results as context.
-- **Verification**: a rule-based `CalculatorVerifier` that actually parses the LLM's natural-language answer (including LaTeX-style math and multi-step reasoning) and checks it against the real computed answer.
-- **Three separate recovery paths**: wrong verification result (retry with feedback), tool execution failure (retry the tool), and empty LLM output (retry the call, then fail loudly instead of pretending an empty string is a valid answer).
-- **Evaluation harness** that runs real tasks against a live Ollama model and reports an actual success rate.
-- **FastAPI + Docker**, both manually verified end to end.
+* **Two tools**: a safe AST-based calculator (no `eval()`) and a basic text analyzer.
+* **Execution loop** with bounded iterations, tool observations fed back into context.
+* **Planning**: breaks a task into steps via a constrained prompt format, then runs each step with the previous results as context.
+* **Verification**: a rule-based `CalculatorVerifier` that actually parses the LLM's natural-language answer (including LaTeX-style math and multi-step reasoning) and checks it against the real computed answer.
+* **Three separate recovery paths**: wrong verification result (retry with feedback), tool execution failure (retry the tool), and empty LLM output (retry the call, then fail loudly instead of pretending an empty string is a valid answer).
+* **Evaluation harness** that runs real tasks against a live Ollama model and reports an actual success rate.
+* **FastAPI + Docker**, both manually verified end to end.
 
 ## What the evaluation actually caught
 
@@ -61,19 +63,19 @@ Neither of these would have shown up in a mocked unit test. That's the point of 
 ```
 app/
   agent/
-    agent.py         run, run_tool, run_with_tools, run_with_verification,
-                      run_with_recovery, run_with_planning
+    agent.py         run, run\_tool, run\_with\_tools, run\_with\_verification,
+                      run\_with\_recovery, run\_with\_planning
     models.py        ToolResult
     state.py         ExecutionState
     planning.py      Planner, Plan
     verification.py  Verifier, VerificationResult, CalculatorVerifier
   llm/               client.py, models.py, ollama.py
-  tools/             base.py, calculator.py, text_analyzer.py, registry.py
+  tools/             base.py, calculator.py, text\_analyzer.py, registry.py
   evaluation/        evaluator.py, cases.py
   api.py             FastAPI app
 scripts/
-  run_evaluation.py            calculator benchmark
-  run_planning_evaluation.py   planning benchmark
+  run\_evaluation.py            calculator benchmark
+  run\_planning\_evaluation.py   planning benchmark
 tests/               87+ tests
 Dockerfile
 .dockerignore
@@ -85,18 +87,18 @@ Needs Python 3.11+ and [Ollama](https://ollama.com) running locally (developed a
 
 ```powershell
 git clone <repo-url>
-cd AI_AGENTIC_SYSTEM
+cd AI\_AGENTIC\_SYSTEM
 python -m venv .venv
-.venv\Scripts\activate
+.venv\\Scripts\\activate
 pip install -r requirements.txt
 ```
 
 Copy `.env.example` to `.env`:
 
 ```
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen3.5:latest
+LLM\_PROVIDER=ollama
+OLLAMA\_BASE\_URL=http://localhost:11434
+OLLAMA\_MODEL=qwen3.5:latest
 ```
 
 Then:
@@ -118,17 +120,18 @@ The container reaches Ollama on the host via `host.docker.internal`.
 
 **Tests:** `pytest -v`
 
-**Evaluation:** `python -m scripts.run_evaluation` and `python -m scripts.run_planning_evaluation`
+**Evaluation:** `python -m scripts.run\_evaluation` and `python -m scripts.run\_planning\_evaluation`
 
 ## Roadmap
 
-- [x] V0 — single-tool agent, tool calling, observation
-- [x] V0.1 — multi-tool
-- [x] V0.2 — planning / task decomposition
-- [x] V1 — verification, recovery, execution state, evaluation, API, Docker
+* \[x] V0 — single-tool agent, tool calling, observation
+* \[x] V0.1 — multi-tool
+* \[x] V0.2 — planning / task decomposition
+* \[x] V1 — verification, recovery, execution state, evaluation, API, Docker
 
 Tagged at each milestone: `v0.1.0-multi-tool`, `v0.2.0-planning`, `v1.0.0`.
 
 ## License
 
 MIT
+
