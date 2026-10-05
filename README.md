@@ -1,6 +1,14 @@
 # Real-World Agentic AI System
 
-!\[Architecture](architecture.svg)
+
+
+
+
+!\[Architecture](./architecture.svg)
+
+
+
+
 
 I built this to actually understand how a reliable agent should work — not another LangChain wrapper, but planning, tool use, verification, and recovery built from scratch so I know exactly what's happening at every step.
 
